@@ -14,7 +14,7 @@ open class BoltClient: ClientProtocol {
     private let port: Int
     private let username: String
     private let password: String
-    private let encrypted: Bool
+    // private let encryption: Encryption
     private let connection: Connection
 
     private var currentTransaction: Transaction?
@@ -29,39 +29,55 @@ open class BoltClient: ClientProtocol {
         case unknownError
     }
 
-    required public init(_ configuration: ClientConfigurationProtocol) throws {
-
-        self.hostname = configuration.hostname
-        self.port = configuration.port
-        self.username = configuration.username
-        self.password = configuration.password
-        self.encrypted = configuration.encrypted
-
-        let settings = ConnectionSettings(username: self.username, password: self.password, userAgent: "Theo 5.2.0")
-
-        let socket = try EncryptedSocket(hostname: hostname, port: port)
-        socket.certificateValidator = UnsecureCertificateValidator(hostname: self.hostname, port: UInt(self.port))
-        self.connection = Connection(
-            socket: socket,
-            settings: settings)
-    }
-
-    required public init(hostname: String = "localhost", port: Int = 7687, username: String = "neo4j", password: String = "neo4j", encrypted: Bool = true) throws {
+    required public init(hostname: String = "localhost", port: Int = 7687, username: String = "neo4j", password: String = "neo4j", encryption: Encryption) throws {
 
         self.hostname = hostname
         self.port = port
         self.username = username
         self.password = password
-        self.encrypted = encrypted
+        // self.encryption = encryption
 
-        let settings = ConnectionSettings(username: username, password: password, userAgent: "Theo 5.2.0")
+        let settings = ConnectionSettings(username: username, password: password, userAgent: "Theo 5.2.1")
 
-        let socket = try EncryptedSocket(hostname: hostname, port: port)
-        socket.certificateValidator = UnsecureCertificateValidator(hostname: self.hostname, port: UInt(self.port))
+        let socket: SocketProtocol
+        switch encryption {
+        case .unencrypted:
+            socket = try UnencryptedSocket(hostname: hostname, port: port)
+        case .certificateIsSelfSigned, .certificateTrusted(certificatePath: _), .certificateTrustedByAuthority:
+            let encSocket = try EncryptedSocket(hostname: hostname, port: port)
+            let port = UInt(self.port)
+
+            switch encryption {
+            case .unencrypted:
+                break
+            case .certificateIsSelfSigned:
+                encSocket.certificateValidator = UnsecureCertificateValidator(hostname: self.hostname, port: port)
+            case let .certificateTrusted(certificatePath: certPath):
+                encSocket.certificateValidator = TrustSpecificOrRootCertificateValidator(hostname: self.hostname, port: port, trustedCertificateAtPath: certPath)
+            case .certificateTrustedByAuthority:
+                encSocket.certificateValidator = TrustRootOnlyCertificateValidator(hostname: self.hostname, port: port)
+                
+            }
+            socket = encSocket
+        }
+
         self.connection = Connection(
             socket: socket,
             settings: settings)
     }
+    
+    public convenience init(_ configuration: ClientConfigurationProtocol) throws {
+
+        try self.init(
+            hostname: configuration.hostname,
+            port: configuration.port,
+            username: configuration.username,
+            password: configuration.password,
+            encryption: configuration.encryption
+        )
+    }
+
+
 
     /**
      Connects to Neo4j given the connection settings BoltClient was initialized with.

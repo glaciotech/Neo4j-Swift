@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name         = "Theo"
-  s.version      = "5.2.0"
+  s.version      = "5.2.1"
   s.summary      = "Open Source Neo4j library for iOS"
 
   s.description  = <<-DESC

@@ -7,8 +7,7 @@ struct BoltConfig: ClientConfigurationProtocol {
     let port: Int
     let username: String
     let password: String
-    let encrypted: Bool
-    let certificateValidator: CertificateValidatorProtocol
+    let encryption: Encryption
 
     init(pathToFile: String) {
 
@@ -23,19 +22,22 @@ struct BoltConfig: ClientConfigurationProtocol {
             self.password  = jsonConfig["password"] as! String
             self.hostname  = jsonConfig["hostname"] as! String
             self.port      = jsonConfig["port"] as! Int
-            self.encrypted = jsonConfig["encrypted"] as! Bool
+            
+            if let encrypted = jsonConfig["encrypted"] as? Bool {
+                self.encryption = encrypted ? .certificateIsSelfSigned : .unencrypted
+            } else {
+                self.encryption = .unencrypted
+            }
 
         } catch {
 
-            self.username  = "neo4j"
-            self.password  = "neo4j"
-            self.hostname  = "localhost"
-            self.port      = 7687
-            self.encrypted = true
+            self.username   = "neo4j"
+            self.password   = "neo4j"
+            self.hostname   = "localhost"
+            self.port       = 7687
+            self.encryption = .unencrypted
 
             print("Using default parameters as configuration parsing failed: \(error)")
         }
-
-        self.certificateValidator = UnsecureCertificateValidator(hostname: self.hostname, port: UInt(self.port))
     }
 }

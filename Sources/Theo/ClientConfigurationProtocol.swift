@@ -1,13 +1,20 @@
 import Foundation
 import PackStream
 
+public enum Encryption {
+    case unencrypted
+    case certificateIsSelfSigned
+    case certificateTrusted(certificatePath: String)
+    case certificateTrustedByAuthority
+}
+
 public protocol ClientConfigurationProtocol {
 
     var hostname: String { get }
     var port: Int { get }
     var username: String { get }
     var password: String { get }
-    var encrypted: Bool { get }
+    var encryption: Encryption { get }
 }
 
 extension ClientConfigurationProtocol {
@@ -28,7 +35,7 @@ extension ClientConfigurationProtocol {
         return "neo4j"
     }
 
-    public var encrypted: Bool {
-        return true
+    public var encryption: Encryption {
+        return .unencrypted
     }
 }

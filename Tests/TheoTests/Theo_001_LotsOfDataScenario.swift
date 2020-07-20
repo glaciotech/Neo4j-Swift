@@ -45,21 +45,21 @@ class TheoTestCase: XCTestCase {
                                     port: configuration.port,
                                     username: configuration.username,
                                     password: configuration.password,
-                                    encrypted: configuration.encrypted)
+                                    encryption: configuration.encryption)
         } else if mode == .custom || (mode == .any && Theo_000_BoltClientTests.runCount % 3 == 1) {
             class CustomConfig: ClientConfigurationProtocol {
                 let hostname: String
                 let username: String
                 let password: String
                 let port: Int
-                let encrypted: Bool
+                let encryption: Encryption
                 
                 init(configuration: ClientConfigurationProtocol) {
                     hostname = configuration.hostname
                     password = configuration.password
                     username = configuration.username
                     port = configuration.port
-                    encrypted = configuration.encrypted
+                    encryption = configuration.encryption
                 }
             }
             client = try BoltClient(CustomConfig(configuration: configuration))

@@ -31,7 +31,7 @@ public class BoltPoolClient: ClientProtocol {
     private var port: Int { return configuration.port }
     private var username: String { return configuration.username }
     private var password: String { return configuration.password }
-    private var encrypted: Bool { return configuration.encrypted }
+    private var encrypted: Encryption { return configuration.encryption }
     
     required public init(_ configuration: ClientConfigurationProtocol, poolSize: ClosedRange<UInt>) throws {
         
