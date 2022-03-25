@@ -146,6 +146,13 @@ extension BoltPoolClient {
         return client.executeWithResult(request: request)
     }
     
+    public func executeWithResultSync(request: Request) -> Result<QueryResult, Error> {
+        let client = self.getClient()
+        
+        defer { release(client) }
+        return client.executeWithResultSync(request: request)
+    }
+    
     public func executeCypher(_ query: String, params: Dictionary<String, PackProtocol>?) -> EventLoopFuture<QueryResult> {
         let client = self.getClient()
         defer { release(client) }
@@ -468,6 +475,12 @@ extension BoltPoolClient {
         let client = self.getClient()
         defer { release(client) }
         return client.relationshipsWith(type: type, andProperties: properties, skip: skip, limit: limit)
+    }
+    
+    public func relationshipsWithSync(type: String, andProperties properties: [String:PackProtocol] = [:], skip: UInt64 = 0, limit: UInt64 = 25) -> Result<[Relationship], Error> {
+        let client = self.getClient()
+        defer { release(client) }
+        return client.relationshipsWithSync(type: type, andProperties: properties, skip: skip, limit: limit)
     }
     
     public func pullSynchronouslyAndIgnore() {

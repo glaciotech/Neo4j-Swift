@@ -182,6 +182,27 @@ open class BoltClient: ClientProtocol {
         }
     }
     
+    public func executeWithResultSync(request: Request) -> Result<QueryResult, Error> {
+        
+        let group = DispatchGroup()
+        group.enter()
+
+        var theResult: Result<QueryResult, Error> = .failure(BoltClientError.unknownError)
+        DispatchQueue.global(qos: .userInitiated).async {
+            let future = self.executeWithResult(request: request)
+            do {
+                let result = try future.wait()
+                theResult = .success(result)
+            } catch (let error) {
+                theResult = .failure(error)
+            }
+            group.leave()
+        }
+        
+        group.wait()
+        return theResult
+    }
+    
     /**
      Executes a given cypher query on Neo4j
 
@@ -761,6 +782,7 @@ extension BoltClient { // Node functions
             let future = self.createNode(node: node)
             do {
                 let _ = try future.wait()
+                self.pullSynchronouslyAndIgnore()
                 theResult = .success(true)
             } catch (let error) {
                 theResult = .failure(error)
@@ -1297,6 +1319,7 @@ extension BoltClient { // Relationship functions
             let future = self.updateRelationship(relationship: relationship)
             do {
                 let _ = try future.wait()
+                self.pullSynchronouslyAndIgnore()
                 theResult = .success(true)
             } catch {
                 theResult = .failure(BoltClientError.unknownError)
@@ -1434,6 +1457,27 @@ extension BoltClient { // Relationship functions
             let nodes: [Relationship] = Array<Relationship>(queryResult.relationships.values)
             return future.eventLoop.makeSucceededFuture(nodes)
         }
+    }
+    
+    public func relationshipsWithSync(type: String, andProperties properties: [String:PackProtocol] = [:], skip: UInt64 = 0, limit: UInt64 = 25) -> Result<[Relationship], Error> {
+        let group = DispatchGroup()
+        group.enter()
+
+        var theResult: Result<[Relationship], Error> = .failure(BoltClientError.unknownError)
+        DispatchQueue.global(qos: .userInitiated).async {
+            let future = self.relationshipsWith(type: type, andProperties: properties, skip: skip, limit: limit)
+            do {
+                let relationships = try future.wait()
+                theResult = .success(relationships)
+            } catch {
+                theResult = .failure(BoltClientError.unknownError)
+            }
+            group.leave()
+        }
+
+        group.wait()
+        return theResult
+        
     }
 
 }

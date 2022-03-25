@@ -195,16 +195,16 @@ class Theo_001_LotsOfDataScenario: TheoTestCase {
     }
     
     func findData(client: ClientProtocol) throws {
-        client.nodesWith(label: label, andProperties: [:], skip: 0, limit: 0) { result in
-            switch result {
-            case .failure(let error):
-                XCTFail("Failure during query: \(error.localizedDescription)")
-            case .success(let nodes):
-                XCTAssertEqual(nodes.count, 102)
-                let deleteResult = client.deleteNodesSync(nodes: nodes)
-                XCTAssertTrue(deleteResult.isSuccess)
-                client.pullSynchronouslyAndIgnore()
-            }
+        let result = client.nodesWithSync(label: label, andProperties: [:], skip: 0, limit: 0)
+        switch result {
+        case .failure(let error):
+            XCTFail("Failure during query: \(error.localizedDescription)")
+        case .success(let nodes):
+            XCTAssertEqual(nodes.count, 102)
+            let deleteResult = client.deleteNodesSync(nodes: nodes)
+            XCTAssertTrue(deleteResult.isSuccess)
+            client.pullSynchronouslyAndIgnore()
         }
+        
     }
 }

@@ -145,23 +145,21 @@ class Theo_000_BoltClientTests: TheoTestCase {
                 let group = DispatchGroup()
                 group.enter()
                 DispatchQueue.global(qos: .background).async {
-                    client.executeCypherWithResult(cypher, params: [:]) { result in
+                    let result = client.executeCypherSync(cypher, params: [:])
                         
-                        XCTAssert(result.isSuccess)
-                        guard case let Result.success((success, value)) = result else {
-                            XCTFail()
-                            group.leave()
-                            return
-                        }
-                        XCTAssertTrue(success)
-                        XCTAssertEqual(i, value.rows.count)
-                        
-                        if i == max {
-                            exp.fulfill()
-                        }
-                        
+                    XCTAssert(result.isSuccess)
+                    guard case let Result.success(value) = result else {
+                        XCTFail()
                         group.leave()
+                        return
                     }
+                    XCTAssertEqual(i, value.rows.count)
+                    
+                    if i == max {
+                        exp.fulfill()
+                    }
+                    
+                    group.leave()
                 }
                 group.wait()
             }
@@ -179,19 +177,17 @@ class Theo_000_BoltClientTests: TheoTestCase {
         try makeAndConnectClient() { (connectionResult, client) in
             XCTAssert(connectionResult.isSuccess)
             let i = 1000
-            client.executeCypher("UNWIND range(1, \(i)) AS n RETURN n", params: [:]) { result in
-                XCTAssert(result.isSuccess)
-                guard case let Result.success((success, value)) = result
-                else {
-                    XCTFail()
-                    return
-                }
-
-                XCTAssert(success)
-                XCTAssertEqual(1, value.fields.count)
-                XCTAssertEqual(i, value.rows.count)
-                exp.fulfill()
+            let result = client.executeCypherSync("UNWIND range(1, \(i)) AS n RETURN n", params: [:])
+            XCTAssert(result.isSuccess)
+            guard case let Result.success(value) = result
+            else {
+                XCTFail()
+                return
             }
+
+            XCTAssertEqual(1, value.fields.count)
+            XCTAssertEqual(i, value.rows.count)
+            exp.fulfill()
         }
         
         
@@ -468,9 +464,11 @@ class Theo_000_BoltClientTests: TheoTestCase {
         if let bookmark = client.getBookmark() {
             XCTAssertNotEqual("", bookmark)
             
-            let endIndex = bookmark.index(bookmark.startIndex, offsetBy: 17)
-            let substring = bookmark[..<endIndex]
-            XCTAssertEqual("neo4j:bookmark:v1", String(substring))
+            // TODO: Look into bookmark name changes
+            // see: https://community.neo4j.com/t/supplied-bookmark-fb-kcwqcw6pr0ihr5szcd5sxayzawgq-does-not-conform-to-pattern-neo4jv1-tx/39540
+            // let endIndex = bookmark.index(bookmark.startIndex, offsetBy: 17)
+            // let substring = bookmark[..<endIndex]
+            // XCTAssertEqual("neo4j:bookmark:v1", String(substring))
             
         } else {
             XCTFail("Bookmark should not be nil")
@@ -486,11 +484,9 @@ class Theo_000_BoltClientTests: TheoTestCase {
         let client = try makeClient()
         let exp = self.expectation(description: "testDeprecatedParameterSyntax")
 
-        try? client.executeCypher("MATCH (a:Person) WHERE a.name = {name} RETURN count(a) AS count", params: ["name": "Arthur"])  { result in
-            
-            XCTAssertFalse(result.isSuccess)
-            exp.fulfill()
-        }
+        let result = client.executeCypherSync("MATCH (a:Person) WHERE a.name = {name} RETURN count(a) AS count", params: ["name": "Arthur"])
+        XCTAssertFalse(result.isSuccess)
+        exp.fulfill()
 
         self.waitForExpectations(timeout: 10, handler: { error in
             XCTAssertNil(error)
@@ -510,40 +506,38 @@ class Theo_000_BoltClientTests: TheoTestCase {
         var numberOfKingArthurs = -1
 
         DispatchQueue.global(qos: .background).async {
-            client.executeCypher("MATCH (a:Person) WHERE a.name = $name RETURN count(a) AS count", params: ["name": "Arthur"])  { result in
+            let result = client.executeCypherSync("MATCH (a:Person) WHERE a.name = $name RETURN count(a) AS count", params: ["name": "Arthur"])
                 
-                XCTAssertTrue(result.isSuccess)
-                guard case let Result.success(value) = result else {
-                    XCTFail()
-                    figureOutNumberOfKingArthurs.leave()
-                    return
+            XCTAssertTrue(result.isSuccess)
+            guard case Result.success(_) = result else {
+                XCTFail()
+                figureOutNumberOfKingArthurs.leave()
+                return
+            }
+            
+            // ? XCTAssertTrue(value.0)
+            
+            switch result {
+            case .failure:
+                XCTFail("Failed to pull response data")
+            case let .success(queryResult):
+                XCTAssertEqual(1, queryResult.rows.count)
+                XCTAssertEqual(1, queryResult.rows.first?.count ?? 0)
+                XCTAssertEqual(0, queryResult.nodes.count)
+                XCTAssertEqual(0, queryResult.relationships.count)
+                XCTAssertEqual(0, queryResult.paths.count)
+                XCTAssertEqual(1, queryResult.fields.count)
+                
+                if let numberOfKingArthursRI = queryResult.rows.first?["count"],
+                    let numberOfKingArthurS64 = numberOfKingArthursRI as? UInt64 {
+                    numberOfKingArthurs = Int(truncatingIfNeeded: numberOfKingArthurS64)
+                } else {
+                    XCTFail("Could not get count and make it an Int")
                 }
                 
-                XCTAssertTrue(value.0)
+                XCTAssertGreaterThanOrEqual(0, numberOfKingArthurs)
                 
-                switch result {
-                case .failure:
-                    XCTFail("Failed to pull response data")
-                case let .success((success, queryResult)):
-                    XCTAssertTrue(success)
-                    XCTAssertEqual(1, queryResult.rows.count)
-                    XCTAssertEqual(1, queryResult.rows.first?.count ?? 0)
-                    XCTAssertEqual(0, queryResult.nodes.count)
-                    XCTAssertEqual(0, queryResult.relationships.count)
-                    XCTAssertEqual(0, queryResult.paths.count)
-                    XCTAssertEqual(1, queryResult.fields.count)
-                    
-                    if let numberOfKingArthursRI = queryResult.rows.first?["count"],
-                        let numberOfKingArthurS64 = numberOfKingArthursRI as? UInt64 {
-                        numberOfKingArthurs = Int(truncatingIfNeeded: numberOfKingArthurS64)
-                    } else {
-                        XCTFail("Could not get count and make it an Int")
-                    }
-                    
-                    XCTAssertGreaterThanOrEqual(0, numberOfKingArthurs)
-                    
-                    figureOutNumberOfKingArthurs.leave()
-                }
+                figureOutNumberOfKingArthurs.leave()
             }
         }
         figureOutNumberOfKingArthurs.wait()
@@ -573,35 +567,35 @@ class Theo_000_BoltClientTests: TheoTestCase {
             XCTAssertEqual(0, queryResult.rows.count)
 
 
-            client.executeCypher("MATCH (a:Person) WHERE a.name = $name " +
+            let result2 = client.executeCypherSync("MATCH (a:Person) WHERE a.name = $name " +
                                  "RETURN a.name AS name, a.title AS title",
-                         params: ["name": "Arthur"])  { result in
+                         params: ["name": "Arthur"])
 
-                XCTAssertTrue(result.isSuccess)
-                guard case let Result.success(value) = result else {
-                    XCTFail()
-                    return
-                }
-                XCTAssertTrue(value.0)
-                let queryResult = value.1
-
-                XCTAssertEqual(2, queryResult.fields.count)
-                XCTAssertEqual(0, queryResult.nodes.count)
-                XCTAssertEqual(0, queryResult.relationships.count)
-                XCTAssertEqual(0, queryResult.paths.count)
-                XCTAssertEqual(1, queryResult.rows.count)
-                XCTAssertEqual("r", queryResult.stats.type)
-
-                let row = queryResult.rows.first!
-                XCTAssertEqual(2, row.count)
-                XCTAssertEqual("King", row["title"] as! String)
-                XCTAssertEqual("Arthur", row["name"] as! String)
-
-                XCTAssertEqual(numberOfKingArthurs + 2, queryResult.rows.first?.count ?? 0)
-
-                tx.markAsFailed() // This should undo the beginning CREATE even though we have pulled it here
-                try? tx.commitBlock(false)
+            XCTAssertTrue(result2.isSuccess)
+            guard case let Result.success(value) = result2 else {
+                XCTFail()
+                return
             }
+            // XCTAssertTrue(value.0)
+            let queryResult2 = value // .1
+
+            XCTAssertEqual(2, queryResult2.fields.count)
+            XCTAssertEqual(0, queryResult2.nodes.count)
+            XCTAssertEqual(0, queryResult2.relationships.count)
+            XCTAssertEqual(0, queryResult2.paths.count)
+            XCTAssertEqual(1, queryResult2.rows.count)
+            XCTAssertEqual("r", queryResult2.stats.type)
+
+            let row = queryResult2.rows.first!
+            XCTAssertEqual(2, row.count)
+            XCTAssertEqual("King", row["title"] as! String)
+            XCTAssertEqual("Arthur", row["name"] as! String)
+
+            XCTAssertEqual(numberOfKingArthurs + 2, queryResult2.rows.first?.count ?? 0)
+
+            tx.markAsFailed() // This should undo the beginning CREATE even though we have pulled it here
+            try? tx.commitBlock(false)
+            
         }, transactionCompleteBlock: { isSuccess in
             XCTAssertFalse(isSuccess, "Transaction was rolled back")
             exp.fulfill()
@@ -739,32 +733,30 @@ class Theo_000_BoltClientTests: TheoTestCase {
         let nodes = makeSomeNodes()
 
         let client = try makeClient()
-        client.createAndReturnNodes(nodes: nodes) { (nodesCreatedResult) in
-            switch nodesCreatedResult {
-            case let .failure(error):
-                XCTFail(error.localizedDescription)
-            case let .success(resultNodes):
-                let resultNode = resultNodes.filter { $0.properties["firstName"] as! String == "Niklas" }.first!
-                let resultNode2 = resultNodes.filter { $0.properties["firstName"] as! String == "Christina" }.first!
+        let nodesCreatedResult = client.createAndReturnNodesSync(nodes: nodes)
+        switch nodesCreatedResult {
+        case let .failure(error):
+            XCTFail(error.localizedDescription)
+        case let .success(resultNodes):
+            let resultNode = resultNodes.filter { $0.properties["firstName"] as! String == "Niklas" }.first!
+            let resultNode2 = resultNodes.filter { $0.properties["firstName"] as! String == "Christina" }.first!
 
-                resultNode["instrument"] = "Recorder"
-                resultNode["favouriteComposer"] = "CPE Bach"
-                resultNode["weight"] = nil
-                resultNode.add(label: "LabelledOne")
+            resultNode["instrument"] = "Recorder"
+            resultNode["favouriteComposer"] = "CPE Bach"
+            resultNode["weight"] = nil
+            resultNode.add(label: "LabelledOne")
 
-                resultNode2["instrument"] = "Piano"
-                resultNode2.add(label: "LabelledOne")
-                client.updateAndReturnNodes(nodes: [resultNode, resultNode2]) { updateNodesResult in
-                    guard case let Result.success(nodes) = updateNodesResult else {
-                        XCTFail()
-                        return
-                    }
-
-                    XCTAssertEqual(2, nodes.count)
-
-                    exp.fulfill()
-                }
+            resultNode2["instrument"] = "Piano"
+            resultNode2.add(label: "LabelledOne")
+            let updateNodesResult = client.updateAndReturnNodesSync(nodes: [resultNode, resultNode2])
+            guard case let Result.success(nodes) = updateNodesResult else {
+                XCTFail()
+                return
             }
+
+            XCTAssertEqual(2, nodes.count)
+
+            exp.fulfill()
         }
         
         waitForExpectations(timeout: 10.0) { error in
@@ -827,21 +819,20 @@ class Theo_000_BoltClientTests: TheoTestCase {
         
         let prevId = apple.id!
         let exp = expectation(description: "Should get expected update back")
-        client.nodeBy(id: prevId) { result in
-            XCTAssertTrue(result.isSuccess)
-            guard case let Result.success(foundApple) = result,
-                  let apple = foundApple else {
-                XCTFail()
-                return
-            }
-            
-            XCTAssertNotNil(apple.id)
-            XCTAssertEqual(prevId, apple.id!)
-            XCTAssertEqual(42, apple["findMe"]?.intValue() ?? -1)
-            XCTAssertTrue(apple["juicy"] as? Bool ?? false)
-            XCTAssertTrue(apple.labels.contains("Apple"))
-            exp.fulfill()
+        let result = client.nodeBySync(id: prevId)
+        XCTAssertTrue(result.isSuccess)
+        guard case let Result.success(foundApple) = result else {
+            XCTFail()
+            return
         }
+        let apple2 = foundApple
+        
+        XCTAssertNotNil(apple2.id)
+        XCTAssertEqual(prevId, apple2.id!)
+        XCTAssertEqual(42, apple2["findMe"]?.intValue() ?? -1)
+        XCTAssertTrue(apple2["juicy"] as? Bool ?? false)
+        XCTAssertTrue(apple2.labels.contains("Apple"))
+        exp.fulfill()
         
         waitForExpectations(timeout: 5.0) { error in
             XCTAssertNil(error)
@@ -918,15 +909,14 @@ class Theo_000_BoltClientTests: TheoTestCase {
         let exp = expectation(description: "testCreatePropertylessNodeAsync")
         
         let client = try makeClient()
-        client.createNode(node: node) { (result) in
-            switch result {
-            case let .failure(error):
-                XCTFail(error.localizedDescription)
-            case let .success(isSuccess):
-                XCTAssertTrue(isSuccess)
-                client.pullSynchronouslyAndIgnore()
-                exp.fulfill()
-            }
+        let result = client.createNodeSync(node: node)
+        switch result {
+        case let .failure(error):
+            XCTFail(error.localizedDescription)
+        case let .success(isSuccess):
+            XCTAssertTrue(isSuccess)
+            client.pullSynchronouslyAndIgnore()
+            exp.fulfill()
         }
         
         waitForExpectations(timeout: 5.0) { error in
@@ -1094,16 +1084,15 @@ class Theo_000_BoltClientTests: TheoTestCase {
         let (from, to) = (madeNodes[0], madeNodes[1])
         let relationship1 = Relationship(fromNode: from, toNode: to, type: "Married to")
         let relationship2 = Relationship(fromNode: to, toNode: from, type: "Married to")
-        client.createAndReturnRelationships(relationships: [relationship1, relationship2]) { createdRelationships in
-            XCTAssertTrue(createdRelationships.isSuccess)
-            guard case let Result.success(value) = createdRelationships else {
-                XCTFail()
-                return
-            }
-
-            XCTAssertEqual(2, value.count)
-            exp.fulfill()
+        let createdRelationships = client.createAndReturnRelationshipsSync(relationships: [relationship1, relationship2])
+        XCTAssertTrue(createdRelationships.isSuccess)
+        guard case let Result.success(value) = createdRelationships else {
+            XCTFail()
+            return
         }
+
+        XCTAssertEqual(2, value.count)
+        exp.fulfill()
         
         waitForExpectations(timeout: 5.0) { error in
             XCTAssertNil(error)
@@ -1117,15 +1106,14 @@ class Theo_000_BoltClientTests: TheoTestCase {
         let madeNodes = makeSomeNodes()
         let (from, to) = (madeNodes[0], madeNodes[1])
         let relationship = Relationship(fromNode: from, toNode: to, type: "Married to")
-        client.createAndReturnRelationship(relationship: relationship) { createdRelationships in
-            XCTAssertTrue(createdRelationships.isSuccess)
-            guard case let Result.success(value) = createdRelationships else {
-                XCTFail()
-                return
-            }
-            XCTAssertEqual("Married to", value.type)
-            exp.fulfill()
+        let createdRelationships = client.createAndReturnRelationshipSync(relationship: relationship)
+        XCTAssertTrue(createdRelationships.isSuccess)
+        guard case let Result.success(value) = createdRelationships else {
+            XCTFail()
+            return
         }
+        XCTAssertEqual("Married to", value.type)
+        exp.fulfill()
         
         waitForExpectations(timeout: 5.0) { error in
             XCTAssertNil(error)
@@ -1147,20 +1135,19 @@ class Theo_000_BoltClientTests: TheoTestCase {
         }
 
         let relationship = Relationship(fromNode: from, toNode: to, type: "Married to")
-        client.createAndReturnRelationship(relationship: relationship) { createdRelationships in
+        let createdRelationships = client.createAndReturnRelationshipSync(relationship: relationship)
             
-            if case Result.failure(let error) = createdRelationships {
-                XCTFail("Did not expect creation of relationship to fail. Got error \(error)")
-            }
-            
-            XCTAssertTrue(createdRelationships.isSuccess)
-            guard case let Result.success(value) = createdRelationships else {
-                XCTFail()
-                return
-            }
-            XCTAssertEqual("Married to", value.type)
-            exp.fulfill()
+        if case Result.failure(let error) = createdRelationships {
+            XCTFail("Did not expect creation of relationship to fail. Got error \(error)")
         }
+        
+        XCTAssertTrue(createdRelationships.isSuccess)
+        guard case let Result.success(value) = createdRelationships else {
+            XCTFail()
+            return
+        }
+        XCTAssertEqual("Married to", value.type)
+        exp.fulfill()
         
         waitForExpectations(timeout: 5.0) { error in
             XCTAssertNil(error)
@@ -1182,20 +1169,19 @@ class Theo_000_BoltClientTests: TheoTestCase {
         }
         
         let relationship = Relationship(fromNode: from, toNode: to, type: "Married to")
-        client.createAndReturnRelationship(relationship: relationship) { createdRelationships in
+        let createdRelationships = client.createAndReturnRelationshipSync(relationship: relationship)
             
-            if case Result.failure(let error) = createdRelationships {
-                XCTFail("Did not expect creation of relationship to fail. Got error \(error)")
-            }
-            
-            XCTAssertTrue(createdRelationships.isSuccess)
-            guard case let Result.success(value) = createdRelationships else {
-                XCTFail()
-                return
-            }
-            XCTAssertEqual("Married to", value.type)
-            exp.fulfill()
+        if case Result.failure(let error) = createdRelationships {
+            XCTFail("Did not expect creation of relationship to fail. Got error \(error)")
         }
+        
+        XCTAssertTrue(createdRelationships.isSuccess)
+        guard case let Result.success(value) = createdRelationships else {
+            XCTFail()
+            return
+        }
+        XCTAssertEqual("Married to", value.type)
+        exp.fulfill()
         
         waitForExpectations(timeout: 5.0) { error in
             XCTAssertNil(error)
@@ -1217,20 +1203,19 @@ class Theo_000_BoltClientTests: TheoTestCase {
         }
         
         let relationship = Relationship(fromNode: from, toNode: to, type: "Married to")
-        client.createAndReturnRelationship(relationship: relationship) { createdRelationships in
+        let createdRelationships = client.createAndReturnRelationshipSync(relationship: relationship)
             
-            if case Result.failure(let error) = createdRelationships {
-                XCTFail("Did not expect creation of relationship to fail. Got error \(error)")
-            }
-            
-            XCTAssertTrue(createdRelationships.isSuccess)
-            guard case let Result.success(value) = createdRelationships else {
-                XCTFail()
-                return
-            }
-            XCTAssertEqual("Married to", value.type)
-            exp.fulfill()
+        if case Result.failure(let error) = createdRelationships {
+            XCTFail("Did not expect creation of relationship to fail. Got error \(error)")
         }
+        
+        XCTAssertTrue(createdRelationships.isSuccess)
+        guard case let Result.success(value) = createdRelationships else {
+            XCTFail()
+            return
+        }
+        XCTAssertEqual("Married to", value.type)
+        exp.fulfill()
         
         waitForExpectations(timeout: 5.0) { error in
             XCTAssertNil(error)
@@ -1313,17 +1298,15 @@ class Theo_000_BoltClientTests: TheoTestCase {
         var queryResult: QueryResult! = nil
         let group = DispatchGroup()
         group.enter()
-        client.executeWithResult(request: request) { result in
-            switch result {
-            case let .failure(error):
-                XCTFail(error.localizedDescription)
-                return
-            case let .success((isSuccess, theQueryResult)):
-                XCTAssertTrue(isSuccess)
-                queryResult = theQueryResult
-            }
-            group.leave()
+        let result2 = client.executeWithResultSync(request: request)
+        switch result2 {
+        case let .failure(error):
+            XCTFail(error.localizedDescription)
+            return
+        case let .success(theQueryResult):
+            queryResult = theQueryResult
         }
+        group.leave()
         group.wait()
         
         XCTAssertEqual(1, queryResult!.rows.count)
@@ -1351,17 +1334,15 @@ class Theo_000_BoltClientTests: TheoTestCase {
         var queryResult: QueryResult! = nil
         let group = DispatchGroup()
         group.enter()
-        client.executeWithResult(request: request) { result in
-            switch result {
-            case let .failure(error):
-                XCTFail(error.localizedDescription)
-                return
-            case let .success((isSuccess, theQueryResult)):
-                XCTAssertTrue(isSuccess)
-                queryResult = theQueryResult
-            }
-            group.leave()
+        let result = client.executeWithResultSync(request: request)
+        switch result {
+        case let .failure(error):
+            XCTFail(error.localizedDescription)
+            return
+        case let .success(theQueryResult):
+            queryResult = theQueryResult
         }
+        group.leave()
         group.wait()
 
         XCTAssertEqual(1, queryResult!.rows.count)
@@ -1384,17 +1365,15 @@ class Theo_000_BoltClientTests: TheoTestCase {
         var queryResult: QueryResult! = nil
         let group = DispatchGroup()
         group.enter()
-        client.executeWithResult(request: request) { result in
-            switch result {
-            case let .failure(error):
-                XCTFail(error.localizedDescription)
-                return
-            case let .success((isSuccess, theQueryResult)):
-                XCTAssertTrue(isSuccess)
-                queryResult = theQueryResult
-            }
-            group.leave()
+        let result = client.executeWithResultSync(request: request)
+        switch result {
+        case let .failure(error):
+            XCTFail(error.localizedDescription)
+            return
+        case let .success(theQueryResult):
+            queryResult = theQueryResult
         }
+        group.leave()
         group.wait()
 
         XCTAssertEqual(1, queryResult!.rows.count)
@@ -1421,17 +1400,15 @@ class Theo_000_BoltClientTests: TheoTestCase {
         var queryResult: QueryResult! = nil
         let group = DispatchGroup()
         group.enter()
-        client.executeWithResult(request: request) { result in
-            switch result {
-            case let .failure(error):
-                XCTFail(error.localizedDescription)
-                return
-            case let .success((isSuccess, theQueryResult)):
-                XCTAssertTrue(isSuccess)
-                queryResult = theQueryResult
-            }
-            group.leave()
+        let result = client.executeWithResultSync(request: request)
+        switch result {
+        case let .failure(error):
+            XCTFail(error.localizedDescription)
+            return
+        case let .success(theQueryResult):
+            queryResult = theQueryResult
         }
+        group.leave()
         group.wait()
         
         XCTAssertEqual(1, queryResult!.rows.count)
@@ -1449,46 +1426,42 @@ class Theo_000_BoltClientTests: TheoTestCase {
             
             tx.autocommit = false
             let nodes = self.makeSomeNodes()
-            client.createAndReturnNodes(nodes: nodes) { result in
-                XCTAssertTrue(result.isSuccess)
-                let createdNodes = try! result.get()
-                
-                let (from, to) = (createdNodes[0], createdNodes[1])
-                client.relate(node: from, to: to, type: "Married", properties: [ "happily": true ]) { result in
-                    XCTAssertTrue(result.isSuccess)
-                    let createdRelationship = try! result.get()
-                    
-                    XCTAssertTrue(createdRelationship["happily"] as! Bool)
-                    XCTAssertEqual(from.id!, createdRelationship.fromNodeId)
-                    XCTAssertEqual(to.id!, createdRelationship.toNodeId)
-                    
-                    createdRelationship["location"] = "church"
-                    createdRelationship["someProp"] = 42
-                    
-                    
-                    
-                    client.updateAndReturnRelationship(relationship: createdRelationship) { result in
-                        XCTAssertTrue(result.isSuccess)
-                        var updatedRelationship = try! result.get()
-                        updatedRelationship["someProp"] = nil
-                        
-                        client.updateAndReturnRelationship(relationship: updatedRelationship) { result in
-                            XCTAssertTrue(result.isSuccess)
-                            let finalRelationship = try! result.get()
-                            
-                            XCTAssertTrue(finalRelationship["happily"] as! Bool)
-                            XCTAssertEqual("church", finalRelationship["location"] as! String)
-                            XCTAssertNil(finalRelationship["someProp"])
-                            XCTAssertEqual(from.id!, finalRelationship.fromNodeId)
-                            XCTAssertEqual(to.id!, finalRelationship.toNodeId)
-                            
-                            tx.markAsFailed()
-                            try? client.rollback(transaction: tx) {
-                                exp.fulfill()
-                            }
-                        }
-                    }
-                }
+            let result = client.createAndReturnNodesSync(nodes: nodes)
+            XCTAssertTrue(result.isSuccess)
+            let createdNodes = try! result.get()
+            
+            let (from, to) = (createdNodes[0], createdNodes[1])
+            let result2 = client.relateSync(node: from, to: to, type: "Married", properties: [ "happily": true ])
+            XCTAssertTrue(result2.isSuccess)
+            let createdRelationship = try! result2.get()
+            
+            XCTAssertTrue(createdRelationship["happily"] as! Bool)
+            XCTAssertEqual(from.id!, createdRelationship.fromNodeId)
+            XCTAssertEqual(to.id!, createdRelationship.toNodeId)
+            
+            createdRelationship["location"] = "church"
+            createdRelationship["someProp"] = 42
+            
+            
+            
+            let result3 = client.updateAndReturnRelationshipSync(relationship: createdRelationship)
+            XCTAssertTrue(result3.isSuccess)
+            let updatedRelationship = try! result3.get()
+            updatedRelationship["someProp"] = nil
+            
+            let result4 = client.updateAndReturnRelationshipSync(relationship: updatedRelationship)
+            XCTAssertTrue(result4.isSuccess)
+            let finalRelationship = try! result4.get()
+            
+            XCTAssertTrue(finalRelationship["happily"] as! Bool)
+            XCTAssertEqual("church", finalRelationship["location"] as! String)
+            XCTAssertNil(finalRelationship["someProp"])
+            XCTAssertEqual(from.id!, finalRelationship.fromNodeId)
+            XCTAssertEqual(to.id!, finalRelationship.toNodeId)
+            
+            tx.markAsFailed()
+            try? client.rollback(transaction: tx) {
+                exp.fulfill()
             }
             
         }, transactionCompleteBlock: nil)
@@ -1635,6 +1608,7 @@ class Theo_000_BoltClientTests: TheoTestCase {
         
         relationship["to"] = 2018
         let updateRelResult2 = client.updateRelationshipSync(relationship: relationship)
+        XCTAssertTrue(updateRelResult2.isSuccess)
         guard case let Result.success(value2) = updateRelResult2 else {
             XCTFail()
             return
@@ -1794,16 +1768,15 @@ CREATE (bb)-[:HAS_ALCOHOLPERCENTAGE]->(ap),
         }
         let createdNodeId = createdNode.id!
 
-        client.nodeBy(id: createdNodeId) { foundNodeResult in
-            switch foundNodeResult {
-            case let .failure(error):
-                XCTFail(error.localizedDescription)
-            case let .success(foundNode):
-                XCTAssertNotNil(foundNode)
-                XCTAssertEqual(createdNode.id, foundNode!.id)
-            }
-            exp.fulfill()
+        let foundNodeResult = client.nodeBySync(id: createdNodeId)
+        switch foundNodeResult {
+        case let .failure(error):
+            XCTFail(error.localizedDescription)
+        case let .success(foundNode):
+            XCTAssertNotNil(foundNode)
+            XCTAssertEqual(createdNode.id, foundNode.id)
         }
+        exp.fulfill()
         
         waitForExpectations(timeout: 10.0) { error in
             XCTAssertNil(error)
@@ -1815,36 +1788,34 @@ CREATE (bb)-[:HAS_ALCOHOLPERCENTAGE]->(ap),
         let nodes = makeSomeNodes()
         let labels = Array<String>(nodes.flatMap { $0.labels }[1...2]) // Husband, Father
         
-        let group = DispatchGroup()
-        group.enter()
+//        let group = DispatchGroup()
+//        group.enter()
         
         var nodeCount: Int = -1
-        client.nodesWith(labels: labels, andProperties: [:], skip: 0, limit: 0) { result in
-            XCTAssertTrue(result.isSuccess)
-            guard case let Result.success(value) = result else {
-                XCTFail()
-                return
-            }
-            XCTAssertNotNil(value)
-            nodeCount = value.count
-            group.leave()
+        let result = client.nodesWithSync(labels: labels, andProperties: [:], skip: 0, limit: 0)
+        XCTAssertTrue(result.isSuccess)
+        guard case let Result.success(value) = result else {
+            XCTFail()
+            return
         }
-        group.wait()
+        XCTAssertNotNil(value)
+        nodeCount = value.count
+//        group.leave()
+//        group.wait()
         
         let createResult = client.createNodeSync(node: nodes[0])
         XCTAssertTrue(createResult.isSuccess)
         
         let exp = expectation(description: "Node should be one more than on previous count")
-        client.nodesWith(labels: labels, andProperties: [:], skip: 0, limit: 0) { result in
-            XCTAssertTrue(result.isSuccess)
-            guard case let Result.success(value) = result else {
-                XCTFail()
-                return
-            }
-            XCTAssertNotNil(value)
-            XCTAssertEqual(nodeCount + 1, value.count)
-            exp.fulfill()
+        let result2 = client.nodesWithSync(labels: labels, andProperties: [:], skip: 0, limit: 0)
+        XCTAssertTrue(result2.isSuccess)
+        guard case let Result.success(values) = result2 else {
+            XCTFail()
+            return
         }
+        XCTAssertNotNil(values)
+        XCTAssertEqual(nodeCount + 1, values.count)
+        exp.fulfill()
         
         waitForExpectations(timeout: 5.0) { error in
             XCTAssertNil(error)
@@ -1862,16 +1833,15 @@ CREATE (bb)-[:HAS_ALCOHOLPERCENTAGE]->(ap),
         group.enter()
         
         var nodeCount: Int = -1
-        client.nodesWith(properties: properties, skip: 0, limit: 0) { result in
-            XCTAssertTrue(result.isSuccess)
-            guard case let Result.success(value) = result else {
-                XCTFail()
-                return
-            }
-            XCTAssertNotNil(value)
-            nodeCount = value.count
-            group.leave()
+        let result = client.nodesWithSync(properties: properties, skip: 0, limit: 0)
+        XCTAssertTrue(result.isSuccess)
+        guard case let Result.success(value) = result else {
+            XCTFail()
+            return
         }
+        XCTAssertNotNil(value)
+        nodeCount = value.count
+        group.leave()
         group.wait()
         
         let nodes = makeSomeNodes()
@@ -1879,16 +1849,15 @@ CREATE (bb)-[:HAS_ALCOHOLPERCENTAGE]->(ap),
         XCTAssertTrue(createResult.isSuccess)
         
         let exp = expectation(description: "Node should be one more than on previous count")
-        client.nodesWith(properties: properties, skip: 0, limit: 0) { result in
-            XCTAssertTrue(result.isSuccess)
-            guard case let Result.success(value) = result else {
-                XCTFail()
-                return
-            }
-            XCTAssertNotNil(value)
-            XCTAssertEqual(nodeCount + 1, value.count)
-            exp.fulfill()
+        let result2 = client.nodesWithSync(properties: properties, skip: 0, limit: 0)
+        XCTAssertTrue(result2.isSuccess)
+        guard case let Result.success(value2) = result2 else {
+            XCTFail()
+            return
         }
+        XCTAssertNotNil(value2)
+        XCTAssertEqual(nodeCount + 1, value2.count)
+        exp.fulfill()
         
         waitForExpectations(timeout: 5.0) { error in
             XCTAssertNil(error)
@@ -1908,16 +1877,15 @@ CREATE (bb)-[:HAS_ALCOHOLPERCENTAGE]->(ap),
         
         let limit: UInt64 = UInt64(Int32.max)
         var nodeCount: Int = -1
-        client.nodesWith(labels: labels, andProperties: properties, skip: 0, limit: limit) { result in
-            XCTAssertTrue(result.isSuccess)
-            guard case let Result.success(value) = result else {
-                XCTFail()
-                return
-            }
-            XCTAssertNotNil(value)
-            nodeCount = value.count
-            group.leave()
+        let result = client.nodesWithSync(labels: labels, andProperties: properties, skip: 0, limit: limit)
+        XCTAssertTrue(result.isSuccess)
+        guard case let Result.success(value) = result else {
+            XCTFail()
+            return
         }
+        XCTAssertNotNil(value)
+        nodeCount = value.count
+        group.leave()
         group.wait()
         
         let nodes = makeSomeNodes()
@@ -1925,16 +1893,15 @@ CREATE (bb)-[:HAS_ALCOHOLPERCENTAGE]->(ap),
         XCTAssertTrue(createResult.isSuccess)
         
         let exp = expectation(description: "Node should be one more than on previous count")
-        client.nodesWith(labels: labels, andProperties: properties, skip: 0, limit: limit) { result in
-            XCTAssertTrue(result.isSuccess)
-            guard case let Result.success(value) = result else {
-                XCTFail()
-                return
-            }
-            XCTAssertNotNil(value)
-            XCTAssertEqual(nodeCount + 1, value.count)
-            exp.fulfill()
+        let result2 = client.nodesWithSync(labels: labels, andProperties: properties, skip: 0, limit: limit)
+        XCTAssertTrue(result2.isSuccess)
+        guard case let Result.success(value2) = result2 else {
+            XCTFail()
+            return
         }
+        XCTAssertNotNil(value2)
+        XCTAssertEqual(nodeCount + 1, value2.count)
+        exp.fulfill()
         
         waitForExpectations(timeout: 5.0) { error in
             XCTAssertNil(error)
@@ -1954,16 +1921,15 @@ CREATE (bb)-[:HAS_ALCOHOLPERCENTAGE]->(ap),
         
         let limit: UInt64 = UInt64(Int32.max)
         var nodeCount: Int = -1
-        client.nodesWith(label: label, andProperties: properties, skip: 0, limit: limit) { result in
-            XCTAssertTrue(result.isSuccess)
-            guard case let Result.success(value) = result else {
-                XCTFail()
-                return
-            }
-            XCTAssertNotNil(value)
-            nodeCount = value.count
-            group.leave()
+        let result = client.nodesWithSync(label: label, andProperties: properties, skip: 0, limit: limit)
+        XCTAssertTrue(result.isSuccess)
+        guard case let Result.success(value) = result else {
+            XCTFail()
+            return
         }
+        XCTAssertNotNil(value)
+        nodeCount = value.count
+        group.leave()
         group.wait()
         
         let nodes = makeSomeNodes()
@@ -1971,16 +1937,15 @@ CREATE (bb)-[:HAS_ALCOHOLPERCENTAGE]->(ap),
         XCTAssertTrue(createResult.isSuccess)
         
         let exp = expectation(description: "Node should be one more than on previous count")
-        client.nodesWith(label: label, andProperties: properties, skip: 0, limit: limit) { result in
-            XCTAssertTrue(result.isSuccess)
-            guard case let Result.success(value) = result else {
-                XCTFail()
-                return
-            }
-            XCTAssertNotNil(value)
-            XCTAssertEqual(nodeCount + 1, value.count)
-            exp.fulfill()
+        let result2 = client.nodesWithSync(label: label, andProperties: properties, skip: 0, limit: limit)
+        XCTAssertTrue(result2.isSuccess)
+        guard case let Result.success(value2) = result2 else {
+            XCTFail()
+            return
         }
+        XCTAssertNotNil(value2)
+        XCTAssertEqual(nodeCount + 1, value2.count)
+        exp.fulfill()
         
         waitForExpectations(timeout: 5.0) { error in
             XCTAssertNil(error)
@@ -1998,17 +1963,16 @@ CREATE (bb)-[:HAS_ALCOHOLPERCENTAGE]->(ap),
         group.enter()
         
         var nodeCount: Int = -1
-        client.nodesWith(labels: labels, andProperties: property, skip: 0, limit: 0) { result in
-            XCTAssertTrue(result.isSuccess)
-            guard case let Result.success(value) = result else {
-                XCTFail()
-                return
-            }
-
-            XCTAssertNotNil(value)
-            nodeCount = value.count
-            group.leave()
+        let result = client.nodesWithSync(labels: labels, andProperties: property, skip: 0, limit: 0)
+        XCTAssertTrue(result.isSuccess)
+        guard case let Result.success(value) = result else {
+            XCTFail()
+            return
         }
+
+        XCTAssertNotNil(value)
+        nodeCount = value.count
+        group.leave()
         group.wait()
         
         let nodes = makeSomeNodes()
@@ -2016,16 +1980,15 @@ CREATE (bb)-[:HAS_ALCOHOLPERCENTAGE]->(ap),
         XCTAssertTrue(createResult.isSuccess)
         
         let exp = expectation(description: "Node should be one more than on previous count")
-        client.nodesWith(labels: labels, andProperties: property, skip: 0, limit: 0) { result in
-            XCTAssertTrue(result.isSuccess)
-            guard case let Result.success(value) = result else {
-                XCTFail()
-                return
-            }
-            XCTAssertNotNil(value)
-            XCTAssertEqual(nodeCount + 1, value.count)
-            exp.fulfill()
+        let result2 = client.nodesWithSync(labels: labels, andProperties: property, skip: 0, limit: 0)
+        XCTAssertTrue(result2.isSuccess)
+        guard case let Result.success(value2) = result2 else {
+            XCTFail()
+            return
         }
+        XCTAssertNotNil(value2)
+        XCTAssertEqual(nodeCount + 1, value2.count)
+        exp.fulfill()
         
         waitForExpectations(timeout: 5.0) { error in
             XCTAssertNil(error)
@@ -2044,16 +2007,15 @@ CREATE (bb)-[:HAS_ALCOHOLPERCENTAGE]->(ap),
         
         let limit: UInt64 = UInt64(Int32.max)
         var nodeCount: Int = -1
-        client.nodesWith(label: label, andProperties: property, skip: 0, limit: limit) { result in
-            XCTAssertTrue(result.isSuccess)
-            guard case let Result.success(value) = result else {
-                XCTFail()
-                return
-            }
-            XCTAssertNotNil(value)
-            nodeCount = value.count
-            group.leave()
+        let result = client.nodesWithSync(label: label, andProperties: property, skip: 0, limit: limit)
+        XCTAssertTrue(result.isSuccess)
+        guard case let Result.success(value) = result else {
+            XCTFail()
+            return
         }
+        XCTAssertNotNil(value)
+        nodeCount = value.count
+        group.leave()
         group.wait()
         
         let nodes = makeSomeNodes()
@@ -2061,16 +2023,15 @@ CREATE (bb)-[:HAS_ALCOHOLPERCENTAGE]->(ap),
         XCTAssertTrue(createResult.isSuccess)
         
         let exp = expectation(description: "Node should be one more than on previous count")
-        client.nodesWith(label: label, andProperties: property, skip: 0, limit: limit) { result in
-            XCTAssertTrue(result.isSuccess)
-            guard case let Result.success(value) = result else {
-                XCTFail()
-                return
-            }
-            XCTAssertNotNil(value)
-            XCTAssertEqual(nodeCount + 1, value.count)
-            exp.fulfill()
+        let result2 = client.nodesWithSync(label: label, andProperties: property, skip: 0, limit: limit)
+        XCTAssertTrue(result2.isSuccess)
+        guard case let Result.success(value2) = result2 else {
+            XCTFail()
+            return
         }
+        XCTAssertNotNil(value2)
+        XCTAssertEqual(nodeCount + 1, value2.count)
+        exp.fulfill()
         
         waitForExpectations(timeout: 5.0) { error in
             XCTAssertNil(error)
@@ -2092,22 +2053,21 @@ CREATE (bb)-[:HAS_ALCOHOLPERCENTAGE]->(ap),
         XCTAssertNotNil(relationship)
         
         let exp = expectation(description: "Found relationship in result")
-        client.relationshipsWith(type: type, andProperties: [:], skip: 0, limit: 0) { result in
-            XCTAssertTrue(result.isSuccess)
-            guard case let Result.success(relationships) = result else {
-                XCTFail()
-                return
+        let result2 = client.relationshipsWithSync(type: type, andProperties: [:], skip: 0, limit: 0)
+        XCTAssertTrue(result.isSuccess)
+        guard case let Result.success(relationships) = result2 else {
+            XCTFail()
+            return
+        }
+        XCTAssertNotNil(relationships)
+        for rel in relationships {
+            if let foundId = rel.id,
+                let compareId = relationship.id,
+                foundId == compareId {
+                exp.fulfill()
+                break
             }
-            XCTAssertNotNil(relationships)
-            for rel in relationships {
-                if let foundId = rel.id,
-                    let compareId = relationship.id,
-                    foundId == compareId {
-                    exp.fulfill()
-                    break
-                }
-                
-            }
+            
         }
         
         waitForExpectations(timeout: 5.0) { error in
@@ -2130,22 +2090,21 @@ CREATE (bb)-[:HAS_ALCOHOLPERCENTAGE]->(ap),
         XCTAssertNotNil(relationship)
         
         let exp = expectation(description: "Found relationship in result")
-        client.relationshipsWith(type: type, andProperties: props, skip: 0, limit: 0) { result in
-            XCTAssertTrue(result.isSuccess)
-            guard case let Result.success(relationships) = result else {
-                XCTFail()
-                return
+        let result2 = client.relationshipsWithSync(type: type, andProperties: props, skip: 0, limit: 0)
+        XCTAssertTrue(result.isSuccess)
+        guard case let Result.success(relationships) = result2 else {
+            XCTFail()
+            return
+        }
+        XCTAssertNotNil(relationships)
+        for rel in relationships {
+            if let foundId = rel.id,
+                let compareId = relationship.id,
+                foundId == compareId {
+                exp.fulfill()
+                break
             }
-            XCTAssertNotNil(relationships)
-            for rel in relationships {
-                if let foundId = rel.id,
-                    let compareId = relationship.id,
-                    foundId == compareId {
-                    exp.fulfill()
-                    break
-                }
-                
-            }
+            
         }
         
         waitForExpectations(timeout: 5.0) { error in
@@ -2168,22 +2127,21 @@ CREATE (bb)-[:HAS_ALCOHOLPERCENTAGE]->(ap),
         XCTAssertNotNil(relationship)
         
         let exp = expectation(description: "Found relationship in result")
-        client.relationshipsWith(type: type, andProperties: ["propA": true], skip: 0, limit: 0) { result in
-            XCTAssertTrue(result.isSuccess)
-            guard case let Result.success(relationships) = result else {
-                XCTFail()
-                return
+        let result2 = client.relationshipsWithSync(type: type, andProperties: ["propA": true], skip: 0, limit: 0)
+        XCTAssertTrue(result2.isSuccess)
+        guard case let Result.success(relationships) = result2 else {
+            XCTFail()
+            return
+        }
+        XCTAssertNotNil(relationships)
+        for rel in relationships {
+            if let foundId = rel.id,
+                let compareId = relationship.id,
+                foundId == compareId {
+                exp.fulfill()
+                break
             }
-            XCTAssertNotNil(relationships)
-            for rel in relationships {
-                if let foundId = rel.id,
-                    let compareId = relationship.id,
-                    foundId == compareId {
-                    exp.fulfill()
-                    break
-                }
-                
-            }
+            
         }
         
         waitForExpectations(timeout: 5.0) { error in
@@ -2232,17 +2190,15 @@ CREATE (bb)-[:HAS_ALCOHOLPERCENTAGE]->(ap),
         var queryResult: QueryResult! = nil
         let group = DispatchGroup()
         group.enter()
-        client.executeWithResult(request: request) { result in
-            switch result {
-            case let .failure(error):
-                XCTFail(error.localizedDescription)
-                return
-            case let .success((isSuccess, theQueryResult)):
-                XCTAssertTrue(isSuccess)
-                queryResult = theQueryResult
-            }
-            group.leave()
+        let result = client.executeWithResultSync(request: request)
+        switch result {
+        case let .failure(error):
+            XCTFail(error.localizedDescription)
+            return
+        case let .success(theQueryResult):
+            queryResult = theQueryResult
         }
+        group.leave()
         group.wait()
         
         XCTAssertEqual(1, queryResult!.rows.count)
@@ -2276,15 +2232,14 @@ CREATE (bb)-[:HAS_ALCOHOLPERCENTAGE]->(ap),
         let exp = expectation(description: "Got lots of data back")
 
         let client = try makeClient()
-        client.nodesWith(labels: ["BigNode"], andProperties: [:], skip:0, limit: 0) { result in
-            switch result {
-            case let .failure(error):
-                XCTFail(error.localizedDescription)
-            case let .success(nodes):
-                XCTAssertGreaterThan(nodes.count, 0)
-            }
-            exp.fulfill()
+        let result = client.nodesWithSync(labels: ["BigNode"], andProperties: [:], skip:0, limit: 0)
+        switch result {
+        case let .failure(error):
+            XCTFail(error.localizedDescription)
+        case let .success(nodes):
+            XCTAssertGreaterThan(nodes.count, 0)
         }
+        exp.fulfill()
         
         waitForExpectations(timeout: 15.0) { (error) in
             XCTAssertNil(error)

@@ -10,6 +10,7 @@ public protocol ClientProtocol: AnyObject {
     
     func execute(request: Request) -> EventLoopFuture<QueryResult>
     func executeWithResult(request: Request) -> EventLoopFuture<QueryResult>
+    func executeWithResultSync(request: Request) -> Result<QueryResult, Error>
     
     func executeCypher(_ query: String, params: Dictionary<String,PackProtocol>?) -> EventLoopFuture<QueryResult>
     func executeCypherWithResult(_ query: String, params: [String:PackProtocol]) -> EventLoopFuture<QueryResult>
@@ -90,6 +91,7 @@ public protocol ClientProtocol: AnyObject {
     func deleteRelationshipSync(relationship: Relationship) -> Result<Bool, Error>
 
     func relationshipsWith(type: String, andProperties properties: [String:PackProtocol], skip: UInt64, limit: UInt64) -> EventLoopFuture<[Relationship]>
+    func relationshipsWithSync(type: String, andProperties properties: [String:PackProtocol], skip: UInt64, limit: UInt64) -> Result<[Relationship], Error>
     func pullSynchronouslyAndIgnore()
     
 }
