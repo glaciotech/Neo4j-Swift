@@ -660,6 +660,16 @@ open class BoltClient: ClientProtocol {
             return future.eventLoop.makeSucceededFuture(result)
         }
     }
+    
+    public func pullAllAndIgnore() -> EventLoopFuture<Void> {
+        
+        let pullRequest = BoltRequest.pullAll()
+        let future = self.connection.request(pullRequest)
+
+        return future.flatMap { responses -> EventLoopFuture<Void> in
+            return future.eventLoop.makeSucceededVoidFuture()
+        }
+    }
 
     /// Get the current transaction bookmark
     public func getBookmark() -> String? {
@@ -671,16 +681,6 @@ open class BoltClient: ClientProtocol {
         return future.flatMap { queryResult -> EventLoopFuture<Void> in
             return future.eventLoop.makeSucceededVoidFuture()
         }
-            
-//            { response in
-//                switch response {
-//                case let .failure(error):
-//                    completionBlock?(.failure(error))
-//                case let .success((isSuccess, _)):
-//                    completionBlock?(.success(isSuccess))
-//                }
-//            }
-//        } catch {}
     }
     
     private func performRequestWithReturnNode(request: Request) -> EventLoopFuture<Node> {
@@ -769,7 +769,13 @@ extension BoltClient { // Node functions
 
     public func createNode(node: Node) -> EventLoopFuture<Void> {
         let request = node.createRequest(withReturnStatement: false)
-        return performRequestWithNoReturnNode(request: request)
+        let future = performRequestWithNoReturnNode(request: request)
+//        future.whenComplete { result in
+//            self.pullSynchronouslyAndIgnore()
+//        }
+        return future.flatMap { _ in
+            return self.pullAllAndIgnore()
+        }
     }
 
     public func createNodeSync(node: Node) -> Result<Bool, Error> {
@@ -782,7 +788,7 @@ extension BoltClient { // Node functions
             let future = self.createNode(node: node)
             do {
                 let _ = try future.wait()
-                self.pullSynchronouslyAndIgnore()
+                // self.pullSynchronouslyAndIgnore()
                 theResult = .success(true)
             } catch (let error) {
                 theResult = .failure(error)
@@ -846,6 +852,7 @@ extension BoltClient { // Node functions
             let future = self.createNodes(nodes: nodes)
             do {
                 let _ = try future.wait()
+                self.pullSynchronouslyAndIgnore()
                 theResult = .success(true)
             } catch (let error) {
                 theResult = .failure(error)
