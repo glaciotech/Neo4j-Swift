@@ -190,8 +190,6 @@ class Theo_001_LotsOfDataScenario: TheoTestCase {
             nodes.append(node)
         }
         let result = client.createNodesSync(nodes: nodes)
-        // let result = client.createAndReturnNodesSync(nodes: nodes)
-        // client.pullSynchronouslyAndIgnore()
         XCTAssertTrue(result.isSuccess)
     }
     
@@ -204,7 +202,6 @@ class Theo_001_LotsOfDataScenario: TheoTestCase {
             XCTAssertEqual(nodes.count, 102)
             let deleteResult = client.deleteNodesSync(nodes: nodes)
             XCTAssertTrue(deleteResult.isSuccess)
-            // client.pullSynchronouslyAndIgnore()
         }
         
     }

@@ -159,10 +159,10 @@ extension BoltPoolClient {
         return client.executeCypher(query, params: params)
     }
     
-    public func executeCypherWithResult(_ query: String, params: [String:PackProtocol] = [:]) -> EventLoopFuture<QueryResult>  {
+    public func executeCypher(_ query: String, params: [String:PackProtocol] = [:]) -> EventLoopFuture<QueryResult>  {
         let client = self.getClient()
         defer { release(client) }
-        return client.executeCypherWithResult(query, params: params)
+        return client.executeCypher(query, params: params)
     }
     
     public func executeCypherSync(_ query: String, params: Dictionary<String, PackProtocol>?) -> (Result<QueryResult, Error>) {
@@ -192,12 +192,6 @@ extension BoltPoolClient {
         let client = self.getClient() // TODO: How can we ensure we get the same client that is currently processing that transaction?
         defer { release(client) }
         try client.rollback(transaction: transaction, rollbackCompleteBlock: rollbackCompleteBlock)
-    }
-    
-    public func pullAll(partialQueryResult: QueryResult = QueryResult()) -> EventLoopFuture<QueryResult> {
-        let client = self.getClient()
-        defer { release(client) }
-        return client.pullAll(partialQueryResult: partialQueryResult)
     }
     
     public func getBookmark() -> String? {
@@ -275,12 +269,6 @@ extension BoltPoolClient {
         let client = self.getClient()
         defer { release(client) }
         return client.updateNode(node: node)
-    }
-    
-    public func performRequestWithNoReturnNode(request: Request) -> EventLoopFuture<Void> {
-        let client = self.getClient()
-        defer { release(client) }
-        return client.performRequestWithNoReturnNode(request: request)
     }
     
     public func updateNodeSync(node: Node) -> Result<Bool, Error> {
@@ -447,12 +435,6 @@ extension BoltPoolClient {
         return client.updateRelationship(relationship: relationship)
     }
     
-    public func performRequestWithNoReturnRelationship(request: Request) -> EventLoopFuture<Void> {
-        let client = self.getClient()
-        defer { release(client) }
-        return client.performRequestWithNoReturnRelationship(request: request)
-    }
-    
     public func updateRelationshipSync(relationship: Relationship) -> Result<Bool, Error> {
         let client = self.getClient()
         defer { release(client) }
@@ -481,11 +463,5 @@ extension BoltPoolClient {
         let client = self.getClient()
         defer { release(client) }
         return client.relationshipsWithSync(type: type, andProperties: properties, skip: skip, limit: limit)
-    }
-    
-    public func pullSynchronouslyAndIgnore() {
-        let client = self.getClient()
-        defer { release(client) }
-        client.pullSynchronouslyAndIgnore()
     }
 }

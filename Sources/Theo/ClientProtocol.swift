@@ -13,7 +13,7 @@ public protocol ClientProtocol: AnyObject {
     func executeWithResultSync(request: Request) -> Result<QueryResult, Error>
     
     func executeCypher(_ query: String, params: Dictionary<String,PackProtocol>?) -> EventLoopFuture<QueryResult>
-    func executeCypherWithResult(_ query: String, params: [String:PackProtocol]) -> EventLoopFuture<QueryResult>
+    func executeCypher(_ query: String, params: [String:PackProtocol]) -> EventLoopFuture<QueryResult>
     func executeCypherSync(_ query: String, params: Dictionary<String,PackProtocol>?) -> Result<QueryResult, Error>
     
     func executeAsTransaction(mode: Request.TransactionMode, bookmark: String?, transactionBlock: @escaping (_ tx: Transaction) throws -> (), transactionCompleteBlock: ((Bool) -> ())?) throws
@@ -21,10 +21,7 @@ public protocol ClientProtocol: AnyObject {
     func resetSync() throws
     func rollback(transaction: Transaction, rollbackCompleteBlock: (() -> ())?) throws
     
-    func pullAll(partialQueryResult: QueryResult) -> EventLoopFuture<QueryResult>
-    
     func getBookmark() -> String?
-    func performRequestWithNoReturnNode(request: Request) -> EventLoopFuture<Void>
     
     // MARK: - Create
     
@@ -85,13 +82,10 @@ public protocol ClientProtocol: AnyObject {
     func updateRelationship(relationship: Relationship) -> EventLoopFuture<Void>
     func updateRelationshipSync(relationship: Relationship) -> Result<Bool, Error>
     
-    func performRequestWithNoReturnRelationship(request: Request) -> EventLoopFuture<Void>
-    
     func deleteRelationship(relationship: Relationship) -> EventLoopFuture<Void>
     func deleteRelationshipSync(relationship: Relationship) -> Result<Bool, Error>
 
     func relationshipsWith(type: String, andProperties properties: [String:PackProtocol], skip: UInt64, limit: UInt64) -> EventLoopFuture<[Relationship]>
     func relationshipsWithSync(type: String, andProperties properties: [String:PackProtocol], skip: UInt64, limit: UInt64) -> Result<[Relationship], Error>
-    func pullSynchronouslyAndIgnore()
     
 }

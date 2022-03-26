@@ -142,26 +142,18 @@ class Theo_000_BoltClientTests: TheoTestCase {
             let max = 2250
             for i in (max-n)...max {
                 let cypher: String = "UNWIND range(1, \(i)) AS n RETURN n"
-                let group = DispatchGroup()
-                group.enter()
-                DispatchQueue.global(qos: .background).async {
-                    let result = client.executeCypherSync(cypher, params: [:])
-                        
-                    XCTAssert(result.isSuccess)
-                    guard case let Result.success(value) = result else {
-                        XCTFail()
-                        group.leave()
-                        return
-                    }
-                    XCTAssertEqual(i, value.rows.count)
+                let result = client.executeCypherSync(cypher, params: [:])
                     
-                    if i == max {
-                        exp.fulfill()
-                    }
-                    
-                    group.leave()
+                XCTAssert(result.isSuccess)
+                guard case let Result.success(value) = result else {
+                    XCTFail()
+                    return
                 }
-                group.wait()
+                XCTAssertEqual(i, value.rows.count)
+                
+                if i == max {
+                    exp.fulfill()
+                }
             }
         }
         
@@ -356,7 +348,6 @@ class Theo_000_BoltClientTests: TheoTestCase {
                     XCTAssertTrue(client.executeCypherSync("CREATE (n:TheoTestNode { foo: \"bar\"})", params: [:]).isSuccess)
                     XCTAssertTrue(client.executeCypherSync("MATCH (n:TheoTestNode { foo: \"bar\"}) RETURN n", params: [:]).isSuccess)
                     XCTAssertFalse(client.executeCypherSync("MAXXXTCH (n:TheoTestNode { foo: \"bar\"}) DETACH DELETE n", params: [:]).isSuccess)
-                    // client.pullSynchronouslyAndIgnore()
                     tx.markAsFailed()
                     
                     XCTAssertFalse(tx.succeed)
@@ -384,7 +375,6 @@ class Theo_000_BoltClientTests: TheoTestCase {
             XCTAssertTrue(client.executeCypherSync("CREATE (n:TheoTestNode { foo: \"bar\"})", params: [:]).isSuccess)
             XCTAssertTrue(client.executeCypherSync("MATCH (n:TheoTestNode { foo: \"bar\"}) RETURN n", params: [:]).isSuccess)
             XCTAssertFalse(client.executeCypherSync("MAXXXTCH (n:TheoTestNode { foo: \"bar\"}) DETACH DELETE n", params: [:]).isSuccess)
-            // client.pullSynchronouslyAndIgnore()
             tx.markAsFailed()
 
             XCTAssertFalse(tx.succeed)
@@ -419,15 +409,13 @@ class Theo_000_BoltClientTests: TheoTestCase {
         
         let group = DispatchGroup()
         group.enter()
-        
+
         DispatchQueue.global(qos: .background).async {
             do {
                 
                 try client.executeAsTransaction(mode: .readwrite, bookmark: nil, transactionBlock: { (tx) in
                     let result = client.executeCypherSync("CREATE (n:TheoTestNode { foo: \"bar\"})", params: [:])
                     //                    client.executeCypher("CREATE (n:TheoTestNode { foo: \"bar\"})", params: [:]) { result in
-                    
-                    // client.pullSynchronouslyAndIgnore()
                     
                     switch result {
                     case let .failure(error):
@@ -458,7 +446,7 @@ class Theo_000_BoltClientTests: TheoTestCase {
                 XCTFail()
             }
         }
-        
+
         group.wait()
         
         if let bookmark = client.getBookmark() {
@@ -898,7 +886,6 @@ class Theo_000_BoltClientTests: TheoTestCase {
             XCTFail(error.localizedDescription)
         case let .success(isSuccess):
             XCTAssertTrue(isSuccess)
-            client.pullSynchronouslyAndIgnore()
         }
 
     }
@@ -915,7 +902,6 @@ class Theo_000_BoltClientTests: TheoTestCase {
             XCTFail(error.localizedDescription)
         case let .success(isSuccess):
             XCTAssertTrue(isSuccess)
-            client.pullSynchronouslyAndIgnore()
             exp.fulfill()
         }
         
@@ -1296,8 +1282,6 @@ class Theo_000_BoltClientTests: TheoTestCase {
         
         let request = [rel1, rel2].createRequest(withReturnStatement: true)
         var queryResult: QueryResult! = nil
-        let group = DispatchGroup()
-        group.enter()
         let result2 = client.executeWithResultSync(request: request)
         switch result2 {
         case let .failure(error):
@@ -1306,8 +1290,6 @@ class Theo_000_BoltClientTests: TheoTestCase {
         case let .success(theQueryResult):
             queryResult = theQueryResult
         }
-        group.leave()
-        group.wait()
         
         XCTAssertEqual(1, queryResult!.rows.count)
         XCTAssertEqual(4, queryResult!.fields.count)
@@ -1332,8 +1314,6 @@ class Theo_000_BoltClientTests: TheoTestCase {
 
         let request = [rel1, rel2].createRequest(withReturnStatement: true)
         var queryResult: QueryResult! = nil
-        let group = DispatchGroup()
-        group.enter()
         let result = client.executeWithResultSync(request: request)
         switch result {
         case let .failure(error):
@@ -1342,8 +1322,6 @@ class Theo_000_BoltClientTests: TheoTestCase {
         case let .success(theQueryResult):
             queryResult = theQueryResult
         }
-        group.leave()
-        group.wait()
 
         XCTAssertEqual(1, queryResult!.rows.count)
         XCTAssertEqual(4, queryResult!.fields.count)
@@ -1363,8 +1341,6 @@ class Theo_000_BoltClientTests: TheoTestCase {
         
         let request = [rel1, rel2].createRequest(withReturnStatement: true)
         var queryResult: QueryResult! = nil
-        let group = DispatchGroup()
-        group.enter()
         let result = client.executeWithResultSync(request: request)
         switch result {
         case let .failure(error):
@@ -1373,8 +1349,6 @@ class Theo_000_BoltClientTests: TheoTestCase {
         case let .success(theQueryResult):
             queryResult = theQueryResult
         }
-        group.leave()
-        group.wait()
 
         XCTAssertEqual(1, queryResult!.rows.count)
         XCTAssertEqual(4, queryResult!.fields.count)
@@ -1398,8 +1372,6 @@ class Theo_000_BoltClientTests: TheoTestCase {
 
         let request = [rel1, rel2].createRequest(withReturnStatement: true)
         var queryResult: QueryResult! = nil
-        let group = DispatchGroup()
-        group.enter()
         let result = client.executeWithResultSync(request: request)
         switch result {
         case let .failure(error):
@@ -1408,8 +1380,6 @@ class Theo_000_BoltClientTests: TheoTestCase {
         case let .success(theQueryResult):
             queryResult = theQueryResult
         }
-        group.leave()
-        group.wait()
         
         XCTAssertEqual(1, queryResult!.rows.count)
         XCTAssertEqual(4, queryResult!.fields.count)
@@ -1788,9 +1758,6 @@ CREATE (bb)-[:HAS_ALCOHOLPERCENTAGE]->(ap),
         let nodes = makeSomeNodes()
         let labels = Array<String>(nodes.flatMap { $0.labels }[1...2]) // Husband, Father
         
-//        let group = DispatchGroup()
-//        group.enter()
-        
         var nodeCount: Int = -1
         let result = client.nodesWithSync(labels: labels, andProperties: [:], skip: 0, limit: 0)
         XCTAssertTrue(result.isSuccess)
@@ -1800,8 +1767,6 @@ CREATE (bb)-[:HAS_ALCOHOLPERCENTAGE]->(ap),
         }
         XCTAssertNotNil(value)
         nodeCount = value.count
-//        group.leave()
-//        group.wait()
         
         let createResult = client.createNodeSync(node: nodes[0])
         XCTAssertTrue(createResult.isSuccess)
@@ -1829,9 +1794,6 @@ CREATE (bb)-[:HAS_ALCOHOLPERCENTAGE]->(ap),
             "age": 40
         ]
         
-        let group = DispatchGroup()
-        group.enter()
-        
         var nodeCount: Int = -1
         let result = client.nodesWithSync(properties: properties, skip: 0, limit: 0)
         XCTAssertTrue(result.isSuccess)
@@ -1841,8 +1803,6 @@ CREATE (bb)-[:HAS_ALCOHOLPERCENTAGE]->(ap),
         }
         XCTAssertNotNil(value)
         nodeCount = value.count
-        group.leave()
-        group.wait()
         
         let nodes = makeSomeNodes()
         let createResult = client.createNodeSync(node: nodes[0])
@@ -1872,9 +1832,6 @@ CREATE (bb)-[:HAS_ALCOHOLPERCENTAGE]->(ap),
             "age": 40
         ]
         
-        let group = DispatchGroup()
-        group.enter()
-        
         let limit: UInt64 = UInt64(Int32.max)
         var nodeCount: Int = -1
         let result = client.nodesWithSync(labels: labels, andProperties: properties, skip: 0, limit: limit)
@@ -1885,8 +1842,6 @@ CREATE (bb)-[:HAS_ALCOHOLPERCENTAGE]->(ap),
         }
         XCTAssertNotNil(value)
         nodeCount = value.count
-        group.leave()
-        group.wait()
         
         let nodes = makeSomeNodes()
         let createResult = client.createNodeSync(node: nodes[0])
@@ -1916,9 +1871,6 @@ CREATE (bb)-[:HAS_ALCOHOLPERCENTAGE]->(ap),
             "age": 40
         ]
         
-        let group = DispatchGroup()
-        group.enter()
-        
         let limit: UInt64 = UInt64(Int32.max)
         var nodeCount: Int = -1
         let result = client.nodesWithSync(label: label, andProperties: properties, skip: 0, limit: limit)
@@ -1929,8 +1881,6 @@ CREATE (bb)-[:HAS_ALCOHOLPERCENTAGE]->(ap),
         }
         XCTAssertNotNil(value)
         nodeCount = value.count
-        group.leave()
-        group.wait()
         
         let nodes = makeSomeNodes()
         let createResult = client.createNodeSync(node: nodes[0])
@@ -1959,9 +1909,6 @@ CREATE (bb)-[:HAS_ALCOHOLPERCENTAGE]->(ap),
             "firstName": "Niklas"
         ]
         
-        let group = DispatchGroup()
-        group.enter()
-        
         var nodeCount: Int = -1
         let result = client.nodesWithSync(labels: labels, andProperties: property, skip: 0, limit: 0)
         XCTAssertTrue(result.isSuccess)
@@ -1972,8 +1919,6 @@ CREATE (bb)-[:HAS_ALCOHOLPERCENTAGE]->(ap),
 
         XCTAssertNotNil(value)
         nodeCount = value.count
-        group.leave()
-        group.wait()
         
         let nodes = makeSomeNodes()
         let createResult = client.createNodeSync(node: nodes[0])
@@ -2002,9 +1947,6 @@ CREATE (bb)-[:HAS_ALCOHOLPERCENTAGE]->(ap),
             "firstName": "Niklas"
         ]
         
-        let group = DispatchGroup()
-        group.enter()
-        
         let limit: UInt64 = UInt64(Int32.max)
         var nodeCount: Int = -1
         let result = client.nodesWithSync(label: label, andProperties: property, skip: 0, limit: limit)
@@ -2015,8 +1957,6 @@ CREATE (bb)-[:HAS_ALCOHOLPERCENTAGE]->(ap),
         }
         XCTAssertNotNil(value)
         nodeCount = value.count
-        group.leave()
-        group.wait()
         
         let nodes = makeSomeNodes()
         let createResult = client.createNodeSync(node: nodes[0])
@@ -2188,8 +2128,6 @@ CREATE (bb)-[:HAS_ALCOHOLPERCENTAGE]->(ap),
         
         let request = [rel1, rel2].createRequest(withReturnStatement: true)
         var queryResult: QueryResult! = nil
-        let group = DispatchGroup()
-        group.enter()
         let result = client.executeWithResultSync(request: request)
         switch result {
         case let .failure(error):
@@ -2198,8 +2136,6 @@ CREATE (bb)-[:HAS_ALCOHOLPERCENTAGE]->(ap),
         case let .success(theQueryResult):
             queryResult = theQueryResult
         }
-        group.leave()
-        group.wait()
         
         XCTAssertEqual(1, queryResult!.rows.count)
         XCTAssertEqual(4, queryResult!.fields.count)
